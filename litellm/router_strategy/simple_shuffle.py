@@ -9,6 +9,7 @@ import random
 from typing import TYPE_CHECKING, Any, Dict, List, Union
 
 from litellm._logging import verbose_router_logger
+from litellm.integrations.custom_logger import CustomLogger
 
 if TYPE_CHECKING:
     from litellm.router import Router as _Router
@@ -17,6 +18,28 @@ if TYPE_CHECKING:
 else:
     LitellmRouter = Any
 
+class SimpleShuffleWithSessionsLoggingHandler(CustomLogger):
+    def __init__(self):
+        self.session_ids: dict[str, Dict] = {}
+
+    def simple_shuffle_with_sessions(self, llm_router_instance: LitellmRouter, healthy_deployments: Union[List[Any], Dict[Any, Any]], model: str, request_kwargs: Dict[Any, Any] | None = None) -> Dict:
+        if request_kwargs is None:
+            return simple_shuffle(llm_router_instance, healthy_deployments, model)
+        else:
+            metadata = request_kwargs.get("metadata", {})
+            verbose_router_logger.info(f"\n metadata {metadata}")
+            if metadata is None:
+                return simple_shuffle(llm_router_instance, healthy_deployments, model)
+            session_id = metadata.get("session_id", None)
+            if session_id is None:
+                return simple_shuffle(llm_router_instance, healthy_deployments, model)
+            verbose_router_logger.info(f"\n session_id {session_id}")
+            verbose_router_logger.info(f"\n self.session_ids {self.session_ids}")
+            if session_id not in self.session_ids:
+                # only shuffle once per session
+                deployment = simple_shuffle(llm_router_instance, healthy_deployments, model)
+                self.session_ids[session_id] = deployment
+            return self.session_ids[session_id]
 
 def simple_shuffle(
     llm_router_instance: LitellmRouter,

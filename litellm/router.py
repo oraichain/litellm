@@ -63,7 +63,7 @@ from litellm.router_strategy.lowest_cost import LowestCostLoggingHandler
 from litellm.router_strategy.lowest_latency import LowestLatencyLoggingHandler
 from litellm.router_strategy.lowest_tpm_rpm import LowestTPMLoggingHandler
 from litellm.router_strategy.lowest_tpm_rpm_v2 import LowestTPMLoggingHandler_v2
-from litellm.router_strategy.simple_shuffle import simple_shuffle
+from litellm.router_strategy.simple_shuffle import SimpleShuffleWithSessionsLoggingHandler
 from litellm.router_strategy.tag_based_routing import get_deployments_for_tag
 from litellm.router_utils.add_retry_fallback_headers import (
     add_fallback_headers_to_response,
@@ -716,6 +716,13 @@ class Router:
             )
             if isinstance(litellm.callbacks, list):
                 litellm.logging_callback_manager.add_litellm_callback(self.lowestcost_logger)  # type: ignore
+        elif (
+            routing_strategy == RoutingStrategy.SIMPLE_SHUFFLE.value
+            or routing_strategy == RoutingStrategy.SIMPLE_SHUFFLE
+        ):
+            self.simple_shuffle_with_sessions_logger = SimpleShuffleWithSessionsLoggingHandler()
+            if isinstance(litellm.callbacks, list):
+                litellm.logging_callback_manager.add_litellm_callback(self.simple_shuffle_with_sessions_logger)  # type: ignore
         else:
             pass
 
@@ -5517,7 +5524,7 @@ class Router:
                     returned_models.append(model)
 
         return returned_models
-
+    
     def get_model_names(self, team_id: Optional[str] = None) -> List[str]:
         """
         Returns all possible model names for the router, including models defined via model_group_alias.
@@ -6094,7 +6101,8 @@ class Router:
 
         ## get healthy deployments
         ### get all deployments
-        healthy_deployments = self._get_all_deployments(model_name=model)
+        # healthy_deployments = self._get_all_deployments(model_name=model)
+        healthy_deployments = self.model_list
 
         if len(healthy_deployments) == 0:
             # check if the user sent in a deployment name instead
@@ -6273,10 +6281,11 @@ class Router:
                     )
                 )
             elif self.routing_strategy == "simple-shuffle":
-                return simple_shuffle(
+                return self.simple_shuffle_with_sessions_logger.simple_shuffle_with_sessions(
                     llm_router_instance=self,
                     healthy_deployments=healthy_deployments,
                     model=model,
+                    request_kwargs=request_kwargs,
                 )
             elif (
                 self.routing_strategy == "least-busy"
@@ -6399,10 +6408,11 @@ class Router:
         elif self.routing_strategy == "simple-shuffle":
             # if users pass rpm or tpm, we do a random weighted pick - based on rpm/tpm
             ############## Check 'weight' param set for weighted pick #################
-            return simple_shuffle(
+            return self.simple_shuffle_with_sessions_logger.simple_shuffle_with_sessions(
                 llm_router_instance=self,
                 healthy_deployments=healthy_deployments,
                 model=model,
+                request_kwargs=request_kwargs,
             )
         elif (
             self.routing_strategy == "latency-based-routing"
