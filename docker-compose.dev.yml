@@ -1,6 +1,6 @@
 services:
   lite-llm:
-    image: ghcr.io/berriai/litellm:main-v1.66.1-nightly
+    image: oraichain/thesis-litellm-proxy:v1.0.0
     container_name: lite-llm
     restart: always
     volumes:
