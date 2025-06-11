@@ -99,6 +99,7 @@ class DualCache(BaseCache):
                 self.in_memory_cache.set_cache(key, value, **kwargs)
 
             if self.redis_cache is not None and local_only is False:
+                kwargs["ttl"] = self.default_redis_ttl
                 self.redis_cache.set_cache(key, value, **kwargs)
         except Exception as e:
             print_verbose(e)
@@ -311,6 +312,7 @@ class DualCache(BaseCache):
                 await self.in_memory_cache.async_set_cache(key, value, **kwargs)
 
             if self.redis_cache is not None and local_only is False:
+                kwargs["ttl"] = self.default_redis_ttl
                 await self.redis_cache.async_set_cache(key, value, **kwargs)
         except Exception as e:
             verbose_logger.exception(

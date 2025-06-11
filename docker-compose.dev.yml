@@ -3,6 +3,8 @@ services:
     image: oraichain/thesis-litellm-proxy:v1.0.0
     container_name: lite-llm
     restart: always
+    depends_on:
+      - redis
     volumes:
      - "./config.yaml:/app/config.yaml"
      - "./.env:/app/.env"
@@ -12,3 +14,15 @@ services:
       - "${LITE_LLM_MASTER_PORT}:${LITE_LLM_MASTER_PORT}"
 
     command: --config=/app/config.yaml --port=${LITE_LLM_MASTER_PORT} --debug
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - thesis-proxy-cache-data:/data
+    restart: unless-stopped
+
+volumes:
+  thesis-proxy-cache-data:

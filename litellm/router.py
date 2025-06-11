@@ -720,7 +720,7 @@ class Router:
             routing_strategy == RoutingStrategy.SIMPLE_SHUFFLE.value
             or routing_strategy == RoutingStrategy.SIMPLE_SHUFFLE
         ):
-            self.simple_shuffle_with_sessions_logger = SimpleShuffleWithSessionsLoggingHandler()
+            self.simple_shuffle_with_sessions_logger = SimpleShuffleWithSessionsLoggingHandler(self.cache)
             if isinstance(litellm.callbacks, list):
                 litellm.logging_callback_manager.add_litellm_callback(self.simple_shuffle_with_sessions_logger)  # type: ignore
         else:
@@ -6289,7 +6289,7 @@ class Router:
                     )
                 )
             elif self.routing_strategy == "simple-shuffle":
-                return self.simple_shuffle_with_sessions_logger.simple_shuffle_with_sessions(
+                deployment = await self.simple_shuffle_with_sessions_logger.async_get_available_deployments(
                     llm_router_instance=self,
                     healthy_deployments=healthy_deployments,
                     model=model,
@@ -6416,7 +6416,7 @@ class Router:
         elif self.routing_strategy == "simple-shuffle":
             # if users pass rpm or tpm, we do a random weighted pick - based on rpm/tpm
             ############## Check 'weight' param set for weighted pick #################
-            return self.simple_shuffle_with_sessions_logger.simple_shuffle_with_sessions(
+            deployment = self.simple_shuffle_with_sessions_logger.get_available_deployments(
                 llm_router_instance=self,
                 healthy_deployments=healthy_deployments,
                 model=model,

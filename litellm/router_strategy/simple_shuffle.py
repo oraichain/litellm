@@ -6,9 +6,11 @@ If weights are provided, it will return a deployment based on the weights.
 """
 
 import random
+import copy
 from typing import TYPE_CHECKING, Any, Dict, List, Union
 
 from litellm._logging import verbose_router_logger
+from litellm.caching.dual_cache import DualCache
 from litellm.integrations.custom_logger import CustomLogger
 
 if TYPE_CHECKING:
@@ -19,27 +21,69 @@ else:
     LitellmRouter = Any
 
 class SimpleShuffleWithSessionsLoggingHandler(CustomLogger):
-    def __init__(self):
-        self.session_ids: dict[str, Dict] = {}
+    SESSION_KEY_PREFIX = "thesis:session:"
+    # NOTE: Why 3 hours?
+    SESSION_IN_MEMORY_CACHE_TTL = 60 * 60 * 3
+    SESSION_REDIS_CACHE_TTL = 60 * 60 * 3
+    def __init__(self, dual_cache: DualCache):
+        self.dual_cache = dual_cache
+        self.dual_cache.update_cache_ttl(self.SESSION_IN_MEMORY_CACHE_TTL, self.SESSION_REDIS_CACHE_TTL)
 
-    def simple_shuffle_with_sessions(self, llm_router_instance: LitellmRouter, healthy_deployments: Union[List[Any], Dict[Any, Any]], model: str, request_kwargs: Dict[Any, Any] | None = None) -> Dict:
+    async def async_get_available_deployments(self, llm_router_instance: LitellmRouter, healthy_deployments: Union[List[Any], Dict[Any, Any]], model: str, request_kwargs: Dict[Any, Any] | None = None) -> Dict:
         if request_kwargs is None:
             return simple_shuffle(llm_router_instance, healthy_deployments, model)
-        else:
-            metadata = request_kwargs.get("metadata", {})
-            verbose_router_logger.debug(f"\n metadata {metadata}")
-            if metadata is None:
-                return simple_shuffle(llm_router_instance, healthy_deployments, model)
-            session_id = metadata.get("session_id", None)
-            if session_id is None:
-                return simple_shuffle(llm_router_instance, healthy_deployments, model)
-            verbose_router_logger.debug(f"\n session_id {session_id}")
-            verbose_router_logger.debug(f"\n self.session_ids {self.session_ids}")
-            if session_id not in self.session_ids:
-                # only shuffle once per session
-                deployment = simple_shuffle(llm_router_instance, healthy_deployments, model)
-                self.session_ids[session_id] = deployment
-            return self.session_ids[session_id]
+        metadata = request_kwargs.get("metadata", {})
+        verbose_router_logger.debug(f"\n metadata {metadata}")
+        if metadata is None:
+            return simple_shuffle(llm_router_instance, healthy_deployments, model)
+        session_id = metadata.get("session_id", None)
+        if session_id is None:
+            return simple_shuffle(llm_router_instance, healthy_deployments, model)
+        verbose_router_logger.debug(f"\n session_id {session_id}")
+        deployment_name_cache = await self.dual_cache.async_get_cache(f"{self.SESSION_KEY_PREFIX}{session_id}")
+        if not deployment_name_cache:
+            deployment = simple_shuffle(llm_router_instance, healthy_deployments, model)
+            model_name = deployment.get("model_name", '')
+            await self.dual_cache.async_set_cache(f"{self.SESSION_KEY_PREFIX}{session_id}", model_name)
+            return deployment
+        for deployment in healthy_deployments:
+            if deployment.get("model_name") == deployment_name_cache:
+                return deployment
+        # If no matching deployment found, fallback to simple shuffle and update cache
+        deployment = simple_shuffle(llm_router_instance, healthy_deployments, model)
+        print(f"\n deployment is {deployment}")
+        model_name = deployment.get("model_name", '')
+        await self.dual_cache.async_set_cache(f"{self.SESSION_KEY_PREFIX}{session_id}", model_name)
+        # Ensure cache is updated before returning
+        return deployment
+
+    def get_available_deployments(self, llm_router_instance: LitellmRouter, healthy_deployments: Union[List[Any], Dict[Any, Any]], model: str, request_kwargs: Dict[Any, Any] | None = None) -> Dict:
+        if request_kwargs is None:
+            return simple_shuffle(llm_router_instance, healthy_deployments, model)
+        metadata = request_kwargs.get("metadata", {})
+        verbose_router_logger.debug(f"\n metadata {metadata}")
+        if metadata is None:
+            return simple_shuffle(llm_router_instance, healthy_deployments, model)
+        session_id = metadata.get("session_id", None)
+        if session_id is None:
+            return simple_shuffle(llm_router_instance, healthy_deployments, model)
+        verbose_router_logger.debug(f"\n session_id {session_id}")
+        deployment_name_cache = self.dual_cache.get_cache(f"{self.SESSION_KEY_PREFIX}{session_id}")
+        if not deployment_name_cache:
+            deployment = simple_shuffle(llm_router_instance, healthy_deployments, model)
+            model_name = deployment.get("model_name", '')
+            self.dual_cache.set_cache(f"{self.SESSION_KEY_PREFIX}{session_id}", model_name)
+            return deployment
+        for deployment in healthy_deployments:
+            if deployment.get("model_name") == deployment_name_cache:
+                return deployment
+        # If no matching deployment found, fallback to simple shuffle and update cache
+        deployment = simple_shuffle(llm_router_instance, healthy_deployments, model)
+        model_name = deployment.get("model_name", '')
+        self.dual_cache.set_cache(f"{self.SESSION_KEY_PREFIX}{session_id}", model_name)
+        # Ensure cache is updated before returning
+        print(f"\n deployment is {deployment}")
+        return deployment
 
 def simple_shuffle(
     llm_router_instance: LitellmRouter,
