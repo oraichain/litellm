@@ -700,6 +700,7 @@ class RoutingStrategy(enum.Enum):
     USAGE_BASED_ROUTING_V2 = "usage-based-routing-v2"
     USAGE_BASED_ROUTING = "usage-based-routing"
     PROVIDER_BUDGET_LIMITING = "provider-budget-routing"
+    SIMPLE_SHUFFLE = "simple-shuffle"
 
 
 class RouterCacheEnum(enum.Enum):

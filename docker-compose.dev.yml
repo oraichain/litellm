@@ -1,0 +1,14 @@
+services:
+  lite-llm:
+    image: ghcr.io/berriai/litellm:main-v1.66.1-nightly
+    container_name: lite-llm
+    restart: always
+    volumes:
+     - "./config.yaml:/app/config.yaml"
+     - "./.env:/app/.env"
+    env_file:
+      - .env
+    ports:
+      - "${LITE_LLM_MASTER_PORT}:${LITE_LLM_MASTER_PORT}"
+
+    command: --config=/app/config.yaml --port=${LITE_LLM_MASTER_PORT} --debug
