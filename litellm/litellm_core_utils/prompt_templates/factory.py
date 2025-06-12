@@ -2339,6 +2339,7 @@ import httpx
 from litellm.types.llms.bedrock import (
     BedrockConverseReasoningContentBlock,
     BedrockConverseReasoningTextBlock,
+    CachePointBlock,
 )
 from litellm.types.llms.bedrock import ContentBlock as BedrockContentBlock
 from litellm.types.llms.bedrock import DocumentBlock as BedrockDocumentBlock
@@ -3116,6 +3117,11 @@ class BedrockConverseMessagesProcessor:
                 tool_call_result = _convert_to_bedrock_tool_call_result(messages[msg_i])
 
                 tool_content.append(tool_call_result)
+                if "cache_control" in messages[msg_i] or messages[msg_i].get("cache_control") is not None:
+                    tool_content.append(BedrockContentBlock(
+                        cachePoint=CachePointBlock(type="default"),
+                    ))
+                    msg_i += 1
                 msg_i += 1
             if tool_content:
                 # if last message was a 'user' message, then add a blank assistant message (bedrock requires alternating roles)
@@ -3446,6 +3452,11 @@ def _bedrock_converse_messages_pt(  # noqa: PLR0915
             tool_call_result = _convert_to_bedrock_tool_call_result(messages[msg_i])
 
             tool_content.append(tool_call_result)
+            if "cache_control" in messages[msg_i] or messages[msg_i].get("cache_control") is not None:
+                tool_content.append(BedrockContentBlock(
+                    cachePoint=CachePointBlock(type="default"),
+                ))
+                msg_i += 1
             msg_i += 1
         if tool_content:
             # if last message was a 'user' message, then add a blank assistant message (bedrock requires alternating roles)
