@@ -5,15 +5,15 @@ run-name: deploy-${{ github.repository }}-${{ github.ref_name }}-${{ github.run_
 on:
   push:
     branches:
-      - main
       - staging
+      - litellm_stable_release_branch
     tags:
       - v*
 
 jobs:
-  build_and_deploy_main:
-    if: github.ref_type == 'branch' && github.ref_name == 'main'
-    runs-on: [self-hosted, liltellm-stg]
+  build_and_deploy_release:
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+    runs-on: [self-hosted, liltellm-prod]
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
@@ -36,6 +36,34 @@ jobs:
           context: .
           push: true
           tags: oraichain/litellm:${{ github.ref_name }}.${{ env.SHORT_COMMIT }}
+
+      - name: Run Deploy
+        run: |
+          sudo bash -c "cd /opt/deploy-beta/litellm-v2 && \
+          tag=\"oraichain/litellm:${{ github.ref_name }}.${SHORT_COMMIT}\" && \
+          echo \"Using tag: \$tag\" && \
+          sed -E \"s|^( *image:).*|\1 \$tag|\" docker-compose.yml > docker-compose.yml.new && \
+          mv docker-compose.yml.new docker-compose.yml && \
+          docker compose down && \
+          docker compose up -d"
+
+      - name: Notify discord - Build Success
+        if: ${{ success() }}
+        uses: appleboy/discord-action@master
+        with:
+          webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID_DISTILLEDAI }}
+          webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN_DISTILLEDAI }}
+          username: GitBot
+          message: ':white_check_mark: Build image repo: ${{ github.repository }} branch: [${{ github.ref_name }}] success'
+
+      - name: Notify discord - Build Failure
+        if: ${{ failure() }}
+        uses: appleboy/discord-action@master
+        with:
+          webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID_DISTILLEDAI }}
+          webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN_DISTILLEDAI }}
+          username: GitBot
+          message: ":x: Build image repo: ${{ github.repository }} branch: [${{ github.ref_name }}] failure"
 
 
   build_and_deploy_k8s:
@@ -146,7 +174,7 @@ jobs:
           webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID_DISTILLEDAI }}
           webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN_DISTILLEDAI }}
           username: GitBot
-          message: ':white_check_mark: [${{ github.event.client_payload.target }}] Deployed ${{ github.event.client_payload.chart_name }}:${{ github.event.client_payload.tag }}'
+          message: ':white_check_mark: Deployed ${HELM_CHARTS_PATH} tag:=${{ github.ref_name }}.${{ env.SHORT_COMMIT }} sucess '
 
 
       - name: Notify on deploy error
@@ -157,3 +185,6 @@ jobs:
           webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN_DISTILLEDAI }}
           username: GitBot
           message: ":x: [${{ github.event.client_payload.target }}] Deployed ${{ github.event.client_payload.chart_name }}:${{ github.event.client_payload.tag }} failed <@${{ vars.PIC }}>\nAction: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+  
+  
