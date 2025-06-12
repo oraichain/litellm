@@ -334,10 +334,18 @@ def cost_per_token(  # noqa: PLR0915
             model=model, custom_llm_provider=custom_llm_provider
         )
 
+        has_cache_read_input_tokens = cache_read_input_tokens and cache_read_input_tokens > 0 and model_info["cache_read_input_token_cost"] and model_info["cache_read_input_token_cost"] > 0
+
+        if has_cache_read_input_tokens:
+            prompt_tokens_cost_usd_dollar = (
+                model_info["cache_read_input_token_cost"] * cache_read_input_tokens
+            )
+
         if model_info["input_cost_per_token"] > 0:
             ## COST PER TOKEN ##
-            prompt_tokens_cost_usd_dollar = (
-                model_info["input_cost_per_token"] * prompt_tokens
+            total_prompt_tokens = prompt_tokens - cache_read_input_tokens if has_cache_read_input_tokens else prompt_tokens
+            prompt_tokens_cost_usd_dollar = prompt_tokens_cost_usd_dollar + (
+                model_info["input_cost_per_token"] * total_prompt_tokens
             )
         elif (
             model_info.get("input_cost_per_second", None) is not None
@@ -354,8 +362,15 @@ def cost_per_token(  # noqa: PLR0915
                 model_info["input_cost_per_second"] * response_time_ms / 1000  # type: ignore
             )
 
-        if model_info["output_cost_per_token"] > 0:
+        has_cache_creation_input_tokens = cache_creation_input_tokens and cache_creation_input_tokens > 0 and model_info["cache_creation_input_token_cost"] and model_info["cache_creation_input_token_cost"] > 0
+
+        if has_cache_creation_input_tokens:
             completion_tokens_cost_usd_dollar = (
+                model_info["cache_creation_input_token_cost"] * cache_creation_input_tokens
+            )
+
+        if model_info["output_cost_per_token"] > 0:
+            completion_tokens_cost_usd_dollar = completion_tokens_cost_usd_dollar + (
                 model_info["output_cost_per_token"] * completion_tokens
             )
         elif (
