@@ -35,7 +35,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: oraichain/thesis-auth:${{ github.ref_name }}.${{ env.SHORT_COMMIT }}
+          tags: oraichain/litellm:${{ github.ref_name }}.${{ env.SHORT_COMMIT }}
 
 
   build_and_deploy_k8s:
