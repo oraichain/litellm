@@ -176,7 +176,11 @@ jobs:
           webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID_DISTILLEDAI }}
           webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN_DISTILLEDAI }}
           username: GitBot
-          message: ':white_check_mark: Deployed ${CHART_NAME} tag:=${{ github.ref_name }}.${{ env.SHORT_COMMIT }} sucess '
+          message: |
+            :white_check_mark: Deployed **${{ env.CHART_NAME }}**
+            • Ref: `${{ github.ref_name }}`
+            • Commit: `${{ env.SHORT_COMMIT }}`
+            • Status: success
 
 
       - name: Notify on deploy error
