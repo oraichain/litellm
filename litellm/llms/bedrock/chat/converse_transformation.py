@@ -567,6 +567,9 @@ class AmazonConverseConfig(BaseConfig):
 
         # Tool Config
         if bedrock_tool_config is not None:
+            bedrock_tool_config['tools'].append(ToolBlock(
+                cachePoint=CachePointBlock(type="default"),
+            ))
             data["toolConfig"] = bedrock_tool_config
 
         return data
