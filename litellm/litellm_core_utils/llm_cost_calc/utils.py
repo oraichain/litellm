@@ -107,7 +107,7 @@ def _generic_cost_per_character(
     return prompt_cost, completion_cost
 
 
-def _get_token_base_cost(model_info: ModelInfo, usage: Usage) -> Tuple[float, float]:
+def _get_token_base_cost(model_info: ModelInfo, usage: Usage) -> Tuple[float, float, bool]:
     """
     Return prompt cost for a given model and usage.
 
@@ -119,6 +119,7 @@ def _get_token_base_cost(model_info: ModelInfo, usage: Usage) -> Tuple[float, fl
 
     ## CHECK IF ABOVE THRESHOLD
     threshold: Optional[float] = None
+    above_threshold = False
     for key, value in sorted(model_info.items(), reverse=True):
         if key.startswith("input_cost_per_token_above_") and value is not None:
             try:
@@ -128,6 +129,7 @@ def _get_token_base_cost(model_info: ModelInfo, usage: Usage) -> Tuple[float, fl
                     1000 if "k" in threshold_str else 1
                 )
                 if usage.prompt_tokens > threshold:
+                    above_threshold = True
                     prompt_base_cost = cast(
                         float,
                         model_info.get(key, prompt_base_cost),
@@ -145,7 +147,7 @@ def _get_token_base_cost(model_info: ModelInfo, usage: Usage) -> Tuple[float, fl
             except Exception:
                 continue
 
-    return prompt_base_cost, completion_base_cost
+    return prompt_base_cost, completion_base_cost, above_threshold
 
 
 def calculate_cost_component(
@@ -242,16 +244,21 @@ def generic_cost_per_token(
     if text_tokens == 0:
         text_tokens = usage.prompt_tokens - cache_hit_tokens - audio_tokens
 
-    prompt_base_cost, completion_base_cost = _get_token_base_cost(
+    prompt_base_cost, completion_base_cost, above_threshold = _get_token_base_cost(
         model_info=model_info, usage=usage
     )
 
     prompt_cost = float(text_tokens) * prompt_base_cost
 
     ### CACHE READ COST
-    prompt_cost += calculate_cost_component(
-        model_info, "cache_read_input_token_cost", cache_hit_tokens
-    )
+    if above_threshold and model_info.get("cache_read_input_token_cost_above_200k_tokens"):
+        prompt_cost += calculate_cost_component(
+            model_info, "cache_read_input_token_cost_above_200k_tokens", cache_hit_tokens
+        )
+    else:
+        prompt_cost += calculate_cost_component(
+            model_info, "cache_read_input_token_cost", cache_hit_tokens
+        )
 
     ### AUDIO COST
     prompt_cost += calculate_cost_component(

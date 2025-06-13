@@ -435,6 +435,12 @@ All these checks must pass before your PR can be merged.
 3. Install dependencies `pip install -e ".[all]"`
 4. Start proxy backend `uvicorn litellm.proxy.proxy_server:app --host localhost --port 4000 --reload`
 
+### CLI
+1. (In root) create virtual environment `python -m venv .venv`
+2. Activate virtual environment `source .venv/bin/activate`
+3. Install dependencies `pip install -e ".[all]"; pip install litellm; pip install langfuse`
+4. Start proxy CLI: `python -m litellm.proxy.proxy_cli --host localhost --port 9545 --debug --config ./config.yaml`
+
 ### Frontend
 1. Navigate to `ui/litellm-dashboard`
 2. Install dependencies `npm install`

@@ -1,0 +1,20 @@
+services:
+  lite-llm:
+    image: litellm:v1
+    container_name: lite-llm
+    restart: always
+    volumes:
+     - "./config.yaml:/app/config.yaml"
+     - "./.env:/app/.env"
+    env_file:
+      - .env
+    ports:
+      - "${LITE_LLM_MASTER_PORT}:${LITE_LLM_MASTER_PORT}"
+
+    command: --config=/app/config.yaml --port=${LITE_LLM_MASTER_PORT} --debug
+    networks:
+      - distilledprd-botnetwork
+
+networks:
+  distilledprd-botnetwork:
+    external: true
