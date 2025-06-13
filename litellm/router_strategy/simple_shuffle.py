@@ -39,7 +39,7 @@ class SimpleShuffleWithSessionsLoggingHandler(CustomLogger):
         session_id = metadata.get("session_id", None)
         if session_id is None:
             return simple_shuffle(llm_router_instance, healthy_deployments, model)
-        verbose_router_logger.debug(f"\n session_id {session_id}")
+        verbose_router_logger.info(f"\n session_id: {session_id}")
         deployment_name_cache = await self.dual_cache.async_get_cache(f"{self.SESSION_KEY_PREFIX}{session_id}")
         if not deployment_name_cache:
             deployment = simple_shuffle(llm_router_instance, healthy_deployments, model)
@@ -51,7 +51,6 @@ class SimpleShuffleWithSessionsLoggingHandler(CustomLogger):
                 return deployment
         # If no matching deployment found, fallback to simple shuffle and update cache
         deployment = simple_shuffle(llm_router_instance, healthy_deployments, model)
-        print(f"\n deployment is {deployment}")
         model_name = deployment.get("model_name", '')
         await self.dual_cache.async_set_cache(f"{self.SESSION_KEY_PREFIX}{session_id}", model_name)
         # Ensure cache is updated before returning
@@ -82,7 +81,6 @@ class SimpleShuffleWithSessionsLoggingHandler(CustomLogger):
         model_name = deployment.get("model_name", '')
         self.dual_cache.set_cache(f"{self.SESSION_KEY_PREFIX}{session_id}", model_name)
         # Ensure cache is updated before returning
-        print(f"\n deployment is {deployment}")
         return deployment
 
 def simple_shuffle(
