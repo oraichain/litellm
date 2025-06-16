@@ -13,7 +13,7 @@ on:
 jobs:
   build_and_deploy_release:
     if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
-    runs-on: [self-hosted, liltellm-prod]
+    runs-on: [self-hosted, litellm-prod]
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
