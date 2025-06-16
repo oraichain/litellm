@@ -6105,8 +6105,8 @@ class Router:
 
         ## get healthy deployments
         ### get all deployments
-        # healthy_deployments = self._get_all_deployments(model_name=model)
-        healthy_deployments = self.model_list
+        healthy_deployments = self._get_all_deployments(model_name=model)
+        # healthy_deployments = self.model_list
 
         if len(healthy_deployments) == 0:
             # check if the user sent in a deployment name instead
