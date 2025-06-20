@@ -165,10 +165,38 @@ def test_generic_cost_per_token_with_cache_read_input_tokens():
     )
     assert round(prompt_cost, 10) == round(expected_prompt_cost, 10)
 
-    expected_completion_cost = (
-        model_cost_map["output_cost_per_token"] * 10000
-    )
+    expected_completion_cost = model_cost_map["output_cost_per_token"] * 10000
     assert round(completion_cost, 10) == round(expected_completion_cost, 10)
+
+
+def test_generic_cost_per_token_with_cached_tokens_prompt_tokens_details():
+    model = "openai/models/gemini-2.5-pro-preview-05-06"
+    custom_llm_provider = "openai"
+    os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+    usage = Usage(
+        prompt_tokens=25000,
+        completion_tokens=10000,
+        total_tokens=25000 + 10000,
+        prompt_tokens_details=PromptTokensDetailsWrapper(
+            cached_tokens=19000,
+        ),
+    )
+    prompt_cost, completion_cost = generic_cost_per_token(
+        model=model,
+        usage=usage,
+        custom_llm_provider=custom_llm_provider,
+    )
+
+    model_cost_map = litellm.model_cost[model]
+    expected_prompt_cost = (
+        model_cost_map["cache_read_input_token_cost"] * 19000
+        + model_cost_map["input_cost_per_token"] * 6000
+    )
+    assert round(prompt_cost, 10) == round(expected_prompt_cost, 10)
+
+    expected_completion_cost = model_cost_map["output_cost_per_token"] * 10000
+    assert round(completion_cost, 10) == round(expected_completion_cost, 10)
+
 
 def test_generic_cost_per_token_with_cache_read_input_tokens_above_200k_tokens():
     model = "openai/models/gemini-2.5-pro-preview-05-06"
