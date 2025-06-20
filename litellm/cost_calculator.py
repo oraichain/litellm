@@ -714,9 +714,10 @@ def completion_cost(  # noqa: PLR0915
                         and _usage["prompt_tokens_details"]
                     ):
                         prompt_tokens_details = _usage.get("prompt_tokens_details", {})
-                        cache_read_input_tokens = prompt_tokens_details.get(
-                            "cached_tokens", 0
-                        )
+                        cached_tokens = prompt_tokens_details.get("cached_tokens", 0)
+                        # only override cache_read_input_tokens if it is 0
+                        if cache_read_input_tokens == 0:
+                            cache_read_input_tokens = cached_tokens
 
                     total_time = getattr(completion_response, "_response_ms", 0)
 

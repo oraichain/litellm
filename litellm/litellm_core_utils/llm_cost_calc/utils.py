@@ -209,7 +209,7 @@ def generic_cost_per_token(
             cast(
                 Optional[int], getattr(usage.prompt_tokens_details, "cached_tokens", 0)
             )
-            or 0
+            or usage._cache_read_input_tokens
         )
         text_tokens = (
             cast(
