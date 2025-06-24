@@ -107,7 +107,9 @@ def _generic_cost_per_character(
     return prompt_cost, completion_cost
 
 
-def _get_token_base_cost(model_info: ModelInfo, usage: Usage) -> Tuple[float, float, bool]:
+def _get_token_base_cost(
+    model_info: ModelInfo, usage: Usage
+) -> Tuple[float, float, bool]:
     """
     Return prompt cost for a given model and usage.
 
@@ -199,18 +201,24 @@ def generic_cost_per_token(
     prompt_cost = 0.0
     ### PROCESSING COST
     text_tokens = usage.prompt_tokens
-    cache_hit_tokens = 0
+    cache_hit_tokens = (
+        usage._cache_read_input_tokens
+        if usage and usage._cache_read_input_tokens
+        else 0
+    )
     audio_tokens = 0
     character_count = 0
     image_count = 0
     video_length_seconds = 0
     if usage.prompt_tokens_details:
-        cache_hit_tokens = (
+        cached_tokens = (
             cast(
                 Optional[int], getattr(usage.prompt_tokens_details, "cached_tokens", 0)
             )
             or 0
         )
+        if cached_tokens and cached_tokens > 0 and cached_tokens > cache_hit_tokens:
+            cache_hit_tokens = cached_tokens
         text_tokens = (
             cast(
                 Optional[int], getattr(usage.prompt_tokens_details, "text_tokens", None)
@@ -251,9 +259,13 @@ def generic_cost_per_token(
     prompt_cost = float(text_tokens) * prompt_base_cost
 
     ### CACHE READ COST
-    if above_threshold and model_info.get("cache_read_input_token_cost_above_200k_tokens"):
+    if above_threshold and model_info.get(
+        "cache_read_input_token_cost_above_200k_tokens"
+    ):
         prompt_cost += calculate_cost_component(
-            model_info, "cache_read_input_token_cost_above_200k_tokens", cache_hit_tokens
+            model_info,
+            "cache_read_input_token_cost_above_200k_tokens",
+            cache_hit_tokens,
         )
     else:
         prompt_cost += calculate_cost_component(
