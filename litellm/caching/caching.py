@@ -437,7 +437,9 @@ class Cache:
             # cached_response is in `b{} convert it to ModelResponse
             cached_response = cached_result.get("response")
             try:
-                if isinstance(cached_response, dict):
+                if isinstance(cached_response, dict) or isinstance(
+                    cached_response, list
+                ):
                     pass
                 else:
                     cached_response = json.loads(

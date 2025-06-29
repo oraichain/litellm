@@ -198,13 +198,17 @@ class RedisSemanticCache(BaseCache):
         value_str: Optional[str] = None
         try:
             # Extract the prompt from messages
-            messages = kwargs.get("messages", [])
-            if not messages:
-                print_verbose("No messages provided for semantic caching")
-                return
+            prompt = kwargs.get("prompt", None)
+            if not prompt:
+                messages = kwargs.get("messages", [])
+                if not messages:
+                    print_verbose("No messages provided for semantic caching")
+                    return
+                prompt = get_str_from_messages(messages)
+            else:
+                del kwargs["prompt"]
 
-            prompt = get_str_from_messages(messages)
-            value_str = str(value)
+            value_str = json.dumps(value)
 
             # Get TTL and store in Redis semantic cache
             ttl = self._get_ttl(**kwargs)
@@ -231,13 +235,16 @@ class RedisSemanticCache(BaseCache):
         print_verbose(f"Redis semantic-cache get_cache, kwargs: {kwargs}")
 
         try:
-            # Extract the prompt from messages
-            messages = kwargs.get("messages", [])
-            if not messages:
-                print_verbose("No messages provided for semantic cache lookup")
-                return None
+            prompt = kwargs.get("prompt", None)
+            if not prompt:
+                messages = kwargs.get("messages", [])
+                if not messages:
+                    print_verbose("No messages provided for semantic caching")
+                    return None
+                prompt = get_str_from_messages(messages)
+            else:
+                del kwargs["prompt"]
 
-            prompt = get_str_from_messages(messages)
             # Check the cache for semantically similar prompts
             results = self.llmcache.check(prompt=prompt)
 
@@ -263,6 +270,10 @@ class RedisSemanticCache(BaseCache):
                 f"current prompt: {prompt}, "
                 f"cached prompt: {cached_prompt}"
             )
+
+            # only return if similarity is smaller than distance_threshold
+            if similarity > self.distance_threshold:
+                return None
 
             return self._get_cache_logic(cached_response=cached_response)
         except Exception as e:
@@ -330,13 +341,17 @@ class RedisSemanticCache(BaseCache):
 
         try:
             # Extract the prompt from messages
-            messages = kwargs.get("messages", [])
-            if not messages:
-                print_verbose("No messages provided for semantic caching")
-                return
+            prompt = kwargs.get("prompt", None)
+            if not prompt:
+                messages = kwargs.get("messages", [])
+                if not messages:
+                    print_verbose("No messages provided for semantic caching")
+                    return
+                prompt = get_str_from_messages(messages)
+            else:
+                del kwargs["prompt"]
 
-            prompt = get_str_from_messages(messages)
-            value_str = str(value)
+            value_str = json.dumps(value)
 
             # Generate embedding for the value (response) to cache
             prompt_embedding = await self._get_async_embedding(prompt, **kwargs)
@@ -374,13 +389,17 @@ class RedisSemanticCache(BaseCache):
 
         try:
             # Extract the prompt from messages
-            messages = kwargs.get("messages", [])
-            if not messages:
-                print_verbose("No messages provided for semantic cache lookup")
-                kwargs.setdefault("metadata", {})["semantic-similarity"] = 0.0
-                return None
-
-            prompt = get_str_from_messages(messages)
+            # messages = kwargs.get("messages", [])
+            prompt = kwargs.get("prompt", None)
+            if not prompt:
+                messages = kwargs.get("messages", [])
+                if not messages:
+                    print_verbose("No messages provided for semantic cache lookup")
+                    kwargs.setdefault("metadata", {})["semantic-similarity"] = 0.0
+                    return None
+                prompt = get_str_from_messages(messages)
+            else:
+                del kwargs["prompt"]
 
             # Generate embedding for the prompt
             prompt_embedding = await self._get_async_embedding(prompt, **kwargs)
@@ -415,6 +434,10 @@ class RedisSemanticCache(BaseCache):
                 f"current prompt: {prompt}, "
                 f"cached prompt: {cached_prompt}"
             )
+
+            # only return if similarity is smaller than distance_threshold
+            if similarity > self.distance_threshold:
+                return None
 
             return self._get_cache_logic(cached_response=cached_response)
         except Exception as e:

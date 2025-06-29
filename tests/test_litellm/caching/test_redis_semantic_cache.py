@@ -71,7 +71,7 @@ def test_redis_semantic_cache_get_cache(monkeypatch):
             {
                 "prompt": "What is the capital of France?",
                 "response": '{"content": "Paris is the capital of France."}',
-                "vector_distance": 0.1,  # Distance of 0.1 means similarity of 0.9
+                "vector_distance": 0.9,  # Distance of 0.9 means similarity of 0.1, the smaller the better
             }
         ]
         redis_semantic_cache.llmcache.check = MagicMock(return_value=mock_result)
@@ -122,7 +122,7 @@ async def test_redis_semantic_cache_async_get_cache(monkeypatch):
             {
                 "prompt": "What is the capital of France?",
                 "response": '{"content": "Paris is the capital of France."}',
-                "vector_distance": 0.1,  # Distance of 0.1 means similarity of 0.9
+                "vector_distance": 0.9,  # Distance of 0.9 means similarity of 0.1, the smaller the better
             }
         ]
 
