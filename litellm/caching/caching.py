@@ -476,8 +476,9 @@ class Cache:
                     or cache_control_args.get("s-max-age")
                     or float("inf")
                 )
-                cached_result = self.cache.get_cache(cache_key, messages=messages)
-                cached_result = self.cache.get_cache(cache_key, messages=messages)
+                cached_result = self.cache.get_cache(
+                    cache_key, messages=messages, **kwargs
+                )
                 return self._get_cache_logic(
                     cached_result=cached_result, max_age=max_age
                 )

@@ -272,7 +272,7 @@ class RedisSemanticCache(BaseCache):
             )
 
             # only return if similarity is smaller than distance_threshold
-            if similarity > self.distance_threshold:
+            if similarity < self.similarity_threshold:
                 return None
 
             return self._get_cache_logic(cached_response=cached_response)
