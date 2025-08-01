@@ -829,6 +829,10 @@ class Router:
             litellm_params: dict = _deployment_copy["litellm_params"]
             if "api_key" in litellm_params:
                 litellm_params["api_key"] = litellm_params["api_key"][:2] + "*" * 10
+            if "aws_access_key_id" in litellm_params:
+                litellm_params["aws_access_key_id"] = litellm_params["aws_access_key_id"][:2] + "*" * 10
+            if "aws_secret_access_key" in litellm_params:
+                litellm_params["aws_secret_access_key"] = litellm_params["aws_secret_access_key"][:2] + "*" * 10
             return _deployment_copy
         except Exception as e:
             verbose_router_logger.debug(
