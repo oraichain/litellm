@@ -11,9 +11,9 @@ on:
       - v*
 
 jobs:
-  build_and_deploy_release:
-    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
-    runs-on: [self-hosted, litellm-prod]
+  build_image_litellm_stable_release_branch:
+    if: github.ref_type == 'branch' && github.ref_name == 'litellm_stable_release_branch'
+    runs-on: [ubuntu-latest]
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
@@ -37,38 +37,143 @@ jobs:
           push: true
           tags: oraichain/litellm:${{ github.ref_name }}.${{ env.SHORT_COMMIT }}
 
-      - name: Run Deploy
+
+  build_and_deploy_release:
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+    runs-on: [ubuntu-latest]
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.ref_name }}
+      
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set Short Commit
+        id: set_commit
         run: |
-          sudo bash -c "cd /opt/deploy-beta/litellm-v2 && \
-          tag=\"oraichain/litellm:${{ github.ref_name }}.${SHORT_COMMIT}\" && \
-          echo \"Using tag: \$tag\" && \
-          sed -E \"s|^( *image:).*|\1 \$tag|\" docker-compose.yml > docker-compose.yml.new && \
-          mv docker-compose.yml.new docker-compose.yml && \
-          docker compose down && \
-          docker compose up -d"
+          echo "SHORT_COMMIT=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_ENV
 
-      - name: Notify discord - Build Success
-        if: ${{ success() }}
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: oraichain/litellm:${{ github.ref_name }}.${{ env.SHORT_COMMIT }}
+
+      - name: Install GH CLI
+        run: |
+          cat /etc/issue
+          uname -a
+          type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+          && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+          && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+          && sudo apt update \
+          && sudo apt install gh -y
+      - name: gh version
+        run: |
+          gh version
+
+
+      - name: Install yq
+        run: |
+          command_exist=$(command -v "yq") || true
+          current_user=$(whoami)
+          if [ "$current_user" = "root" ]; then
+            bin_path='/usr/local/bin'
+          else
+            mkdir -p ~/bin
+            bin_path="$HOME/bin"
+          fi
+          if [ -z $command_exist ]; then
+            wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O $bin_path/yq
+            chmod +x $bin_path/yq
+            export PATH="$HOME/bin:$PATH"
+          fi
+          yq --version
+
+
+      - name: Update image tag
+        env:
+          PAT: ${{ secrets.PAT_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN  }}
+          APPROVAL_GH_TOKEN: ${{ secrets.APPROVAL_GH_TOKEN }}
+          HELM_CHARTS_PATH: helm-charts/litellm/values-prod.yaml
+          CHART_NAME: thesis-litellm
+          KEY: .image.tag
+          ENV: production
+
+        run: |
+          export TAG=${{ github.ref_name }}.${{ env.SHORT_COMMIT }}
+          export PAT=${{ env.APPROVAL_GH_TOKEN }}
+          export APPROVAL=${{ env.APPROVAL_GH_TOKEN }}
+          export PATH="$HOME/bin:$PATH"
+
+          git fetch --all
+          git clone https://${GH_TOKEN}@github.com/oraichain/infra-deployments.git
+          cd infra-deployments
+
+          git checkout -b feat/update-$CHART_NAME-$ENV-tag-$TAG
+          git config --global user.email "devops@orai.io"
+          git config --global user.name "DevOps"
+          git remote set-url origin https://${PAT}@github.com/oraichain/infra-deployments.git
+
+          if [[ ! -f "${HELM_CHARTS_PATH}" ]]; then
+            echo "❌ File ${HELM_CHARTS_PATH} don't exists !"
+            exit 1
+          fi
+          yq eval -i "${KEY} = strenv(TAG)" "${HELM_CHARTS_PATH}"
+          git commit -am "feat($CHART_NAME): update image tag in $ENV to $TAG"
+          git push -fu origin feat/update-$CHART_NAME-$ENV-tag-$TAG
+          PR_URL=$(gh pr list -H feat/update-$CHART_NAME-$ENV-tag-$TAG -B master --json url --jq '.[].url')
+          if [[ -n "${PR_URL}" ]]; then
+            echo "PR already exists -> ${PR_URL}"
+          else
+            gh pr create --title "Update $CHART_NAME image tag to $TAG in $ENV" --body "$ENV $TAG" -B master
+          fi
+
+          GH_TOKEN=$APPROVAL gh pr review -a feat/update-$CHART_NAME-$ENV-tag-$TAG -b "$ENV env will be auto approved"
+          GH_TOKEN=$APPROVAL gh pr merge -d -s --body="$TAG will be synced to $ENV by ArgoCD" feat/update-$CHART_NAME-$ENV-tag-$TAG --admin
+
+
+      - name: Notify discord
         uses: appleboy/discord-action@master
+        env:
+          CHART_NAME: thesis-litellm
         with:
           webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID_DISTILLEDAI }}
           webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN_DISTILLEDAI }}
           username: GitBot
-          message: ':white_check_mark: Build image repo: ${{ github.repository }} branch: [${{ github.ref_name }}] success'
+          message: |
+            :white_check_mark: Deployed **${{ env.CHART_NAME }}**
+            • Ref: `${{ github.ref_name }}`
+            • Commit: `${{ env.SHORT_COMMIT }}`
+            • Status: success
 
-      - name: Notify discord - Build Failure
-        if: ${{ failure() }}
+
+      - name: Notify on deploy error
+        if: failure()
         uses: appleboy/discord-action@master
+        env:
+          CHART_NAME: thesis-litellm
         with:
           webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID_DISTILLEDAI }}
           webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN_DISTILLEDAI }}
           username: GitBot
-          message: ":x: Build image repo: ${{ github.repository }} branch: [${{ github.ref_name }}] failure"
+          message: |
+            :x: Deployed **${{ env.CHART_NAME }}**
+            • Ref: `${{ github.ref_name }}`
+            • Commit: `${{ env.SHORT_COMMIT }}`
+            • Status: failure
 
 
   build_and_deploy_k8s:
     if: github.ref_type == 'branch' && github.ref_name == 'staging'
-    runs-on: [self-hosted, liltellm-stg]
+    runs-on: [ubuntu-latest]
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
@@ -186,11 +291,14 @@ jobs:
       - name: Notify on deploy error
         if: failure()
         uses: appleboy/discord-action@master
+        env:
+          CHART_NAME: thesis-litellm
         with:
           webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID_DISTILLEDAI }}
           webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN_DISTILLEDAI }}
           username: GitBot
-          message: ":x: [${{ github.event.client_payload.target }}] Deployed ${{ github.event.client_payload.chart_name }}:${{ github.event.client_payload.tag }} failed <@${{ vars.PIC }}>\nAction: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-
-  
-  
+          message: |
+            :x: Deployed **${{ env.CHART_NAME }}**
+            • Ref: `${{ github.ref_name }}`
+            • Commit: `${{ env.SHORT_COMMIT }}`
+            • Status: failure
