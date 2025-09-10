@@ -124,6 +124,7 @@ class AnthropicModelInfo(BaseLLMModelInfo):
             "x-api-key": api_key,
             "accept": "application/json",
             "content-type": "application/json",
+            "anthropic-beta": "fine-grained-tool-streaming-2025-05-14",    
         }
 
         if user_anthropic_beta_headers is not None:

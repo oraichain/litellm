@@ -77,6 +77,12 @@ async def make_call(
         client = litellm.module_level_aclient
 
     try:
+        beta_flag = 'fine-grained-tool-streaming-2025-05-14'
+        if 'anthropic-beta' in headers:
+            if beta_flag not in headers['anthropic-beta']:
+                headers['anthropic-beta'] += f',{beta_flag}'
+        else:
+            headers['anthropic-beta'] = beta_flag
         response = await client.post(
             api_base, headers=headers, data=data, stream=True, timeout=timeout
         )
