@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import sys
+from datetime import datetime
 
 import pytest
 
@@ -9,8 +10,9 @@ import pytest
 # tests are executed from any working directory.
 sys.path.insert(0, os.path.abspath("../../../../../.."))
 
+from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
 from litellm.llms.bedrock.messages.invoke_transformations.anthropic_claude3_transformation import (
-    AmazonAnthropicClaude3MessagesConfig,
+    AmazonAnthropicClaudeMessagesConfig,
     AmazonAnthropicClaudeMessagesStreamDecoder,
 )
 
@@ -19,7 +21,7 @@ from litellm.llms.bedrock.messages.invoke_transformations.anthropic_claude3_tran
 async def test_bedrock_sse_wrapper_encodes_dict_chunks():
     """Verify that `bedrock_sse_wrapper` converts dictionary chunks to properly formatted Server-Sent Events and forwards non-dict chunks unchanged."""
 
-    cfg = AmazonAnthropicClaude3MessagesConfig()
+    cfg = AmazonAnthropicClaudeMessagesConfig()
 
     async def _dummy_stream():  # type: ignore[return-type]
         yield {"type": "message_delta", "text": "hello"}
@@ -27,7 +29,19 @@ async def test_bedrock_sse_wrapper_encodes_dict_chunks():
 
     # Collect all chunks returned by the wrapper
     collected: list[bytes] = []
-    async for chunk in cfg.bedrock_sse_wrapper(_dummy_stream()):
+    async for chunk in cfg.bedrock_sse_wrapper(
+        _dummy_stream(),
+        litellm_logging_obj=LiteLLMLoggingObj(
+            model="bedrock/invoke/anthropic.claude-3-sonnet-20240229-v1:0",
+            messages=[{"role": "user", "content": "Hello, can you tell me a short joke?"}],
+            stream=True,
+            call_type="chat",
+            start_time=datetime.now(),
+            litellm_call_id="test_bedrock_sse_wrapper_encodes_dict_chunks",
+            function_id="test_bedrock_sse_wrapper_encodes_dict_chunks",
+        ),
+        request_body={},
+    ):
         collected.append(chunk)
 
     assert collected, "No chunks returned from wrapper"
