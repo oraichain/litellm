@@ -37,15 +37,21 @@ from openai.types.responses.response import (
     IncompleteDetails,
     Response,
     ResponseOutputItem,
-    ResponseTextConfig,
     Tool,
     ToolChoice,
 )
+
+# Handle OpenAI SDK version compatibility for Text type
+try:
+    from openai.types.responses.response_create_params import Text as ResponseText
+except (ImportError, AttributeError):
+    # Fall back to the concrete config type available in all SDK versions
+    from openai.types.responses.response_text_config_param import ResponseTextConfigParam as ResponseText
+
 from openai.types.responses.response_create_params import (
     Reasoning,
     ResponseIncludable,
     ResponseInputParam,
-    ResponseTextConfigParam,
     ToolChoice,
     ToolParam,
 )
@@ -705,6 +711,7 @@ ValidUserMessageContentTypes = [
     "text",
     "image_url",
     "input_audio",
+    "audio_url",
     "document",
     "video_url",
     "file",
@@ -830,12 +837,12 @@ class OpenAIChatCompletionChunk(ChatCompletionChunk):
 
 class Hyperparameters(BaseModel):
     batch_size: Optional[Union[str, int]] = None  # "Number of examples in each batch."
-    learning_rate_multiplier: Optional[
-        Union[str, float]
-    ] = None  # Scaling factor for the learning rate
-    n_epochs: Optional[
-        Union[str, int]
-    ] = None  # "The number of epochs to train the model for"
+    learning_rate_multiplier: Optional[Union[str, float]] = (
+        None  # Scaling factor for the learning rate
+    )
+    n_epochs: Optional[Union[str, int]] = (
+        None  # "The number of epochs to train the model for"
+    )
 
 
 class FineTuningJobCreate(BaseModel):
@@ -862,18 +869,18 @@ class FineTuningJobCreate(BaseModel):
 
     model: str  # "The name of the model to fine-tune."
     training_file: str  # "The ID of an uploaded file that contains training data."
-    hyperparameters: Optional[
-        Hyperparameters
-    ] = None  # "The hyperparameters used for the fine-tuning job."
-    suffix: Optional[
-        str
-    ] = None  # "A string of up to 18 characters that will be added to your fine-tuned model name."
-    validation_file: Optional[
-        str
-    ] = None  # "The ID of an uploaded file that contains validation data."
-    integrations: Optional[
-        List[str]
-    ] = None  # "A list of integrations to enable for your fine-tuning job."
+    hyperparameters: Optional[Hyperparameters] = (
+        None  # "The hyperparameters used for the fine-tuning job."
+    )
+    suffix: Optional[str] = (
+        None  # "A string of up to 18 characters that will be added to your fine-tuned model name."
+    )
+    validation_file: Optional[str] = (
+        None  # "The ID of an uploaded file that contains validation data."
+    )
+    integrations: Optional[List[str]] = (
+        None  # "A list of integrations to enable for your fine-tuning job."
+    )
     seed: Optional[int] = None  # "The seed controls the reproducibility of the job."
 
 
@@ -902,6 +909,7 @@ OpenAIImageVariationOptionalParams = Literal["n", "size", "response_format", "us
 
 OpenAIImageGenerationOptionalParams = Literal[
     "background",
+    "input_fidelity",
     "moderation",
     "n",
     "output_compression",
@@ -927,6 +935,22 @@ class ComputerToolParam(TypedDict, total=False):
     type: Required[Union[Literal["computer_use_preview"], str]]
 
 
+ALL_RESPONSES_API_TOOL_PARAMS = Union[ToolParam, ComputerToolParam]
+
+
+class PromptObject(TypedDict, total=False):
+    """Reference to a stored prompt template."""
+
+    id: Required[str]
+    """The unique identifier of the prompt template to use."""
+
+    variables: Optional[Dict]
+    """Variables to substitute into the prompt template."""
+
+    version: Optional[str]
+    """Optional version of the prompt template."""
+
+
 class ResponsesAPIOptionalRequestParams(TypedDict, total=False):
     """TypedDict for Optional parameters supported by the responses API."""
 
@@ -938,14 +962,22 @@ class ResponsesAPIOptionalRequestParams(TypedDict, total=False):
     previous_response_id: Optional[str]
     reasoning: Optional[Reasoning]
     store: Optional[bool]
+    background: Optional[bool]
     stream: Optional[bool]
     temperature: Optional[float]
-    text: Optional[ResponseTextConfigParam]
+    text: Optional["ResponseText"]
     tool_choice: Optional[ToolChoice]
-    tools: Optional[List[Union[ToolParam, ComputerToolParam]]]
+    tools: Optional[List[ALL_RESPONSES_API_TOOL_PARAMS]]
     top_p: Optional[float]
     truncation: Optional[Literal["auto", "disabled"]]
     user: Optional[str]
+    service_tier: Optional[str]
+    safety_identifier: Optional[str]
+    prompt: Optional[PromptObject]
+    max_tool_calls: Optional[int]
+    prompt_cache_key: Optional[str]
+    stream_options: Optional[dict]
+    top_logprobs: Optional[int]
 
 
 class ResponsesAPIRequestParams(ResponsesAPIOptionalRequestParams, total=False):
@@ -992,7 +1024,7 @@ class ResponseAPIUsage(BaseLiteLLMOpenAIResponseObject):
 
 class ResponsesAPIResponse(BaseLiteLLMOpenAIResponseObject):
     id: str
-    created_at: float
+    created_at: int
     error: Optional[dict]
     incomplete_details: Optional[IncompleteDetails]
     instructions: Optional[str]
@@ -1006,16 +1038,17 @@ class ResponsesAPIResponse(BaseLiteLLMOpenAIResponseObject):
     parallel_tool_calls: bool
     temperature: Optional[float]
     tool_choice: ToolChoice
-    tools: Union[List[Tool], List[ResponseFunctionToolCall]]
+    tools: Union[List[Tool], List[ResponseFunctionToolCall], List[Dict[str, Any]]]
     top_p: Optional[float]
     max_output_tokens: Optional[int]
     previous_response_id: Optional[str]
     reasoning: Optional[Reasoning]
     status: Optional[str]
-    text: Optional[ResponseTextConfig]
+    text: Optional[Union["ResponseText", Dict[str, Any]]]
     truncation: Optional[Literal["auto", "disabled"]]
     usage: Optional[ResponseAPIUsage]
     user: Optional[str]
+    store: Optional[bool] = None
     # Define private attributes using PrivateAttr
     _hidden_params: dict = PrivateAttr(default_factory=dict)
 
@@ -1034,8 +1067,9 @@ class ResponsesAPIStreamEvents(str, Enum):
     RESPONSE_FAILED = "response.failed"
     RESPONSE_INCOMPLETE = "response.incomplete"
 
-    # Part added
+    # Reasoning summary events
     RESPONSE_PART_ADDED = "response.reasoning_summary_part.added"
+    REASONING_SUMMARY_TEXT_DELTA = "response.reasoning_summary_text.delta"
 
     # Output item events
     OUTPUT_ITEM_ADDED = "response.output_item.added"
@@ -1098,10 +1132,24 @@ class ResponseIncompleteEvent(BaseLiteLLMOpenAIResponseObject):
     response: ResponsesAPIResponse
 
 
+class ResponsePartAddedEvent(BaseLiteLLMOpenAIResponseObject):
+    type: Literal[ResponsesAPIStreamEvents.RESPONSE_PART_ADDED]
+    item_id: str
+    output_index: int
+    part: dict
+
+
+class ReasoningSummaryTextDeltaEvent(BaseLiteLLMOpenAIResponseObject):
+    type: Literal[ResponsesAPIStreamEvents.REASONING_SUMMARY_TEXT_DELTA]
+    item_id: str
+    output_index: int
+    delta: str
+
+
 class OutputItemAddedEvent(BaseLiteLLMOpenAIResponseObject):
     type: Literal[ResponsesAPIStreamEvents.OUTPUT_ITEM_ADDED]
     output_index: int
-    item: dict
+    item: Optional[dict]
 
 
 class OutputItemDoneEvent(BaseLiteLLMOpenAIResponseObject):
@@ -1238,6 +1286,8 @@ ResponsesAPIStreamingResponse = Annotated[
         ResponseCompletedEvent,
         ResponseFailedEvent,
         ResponseIncompleteEvent,
+        ResponsePartAddedEvent,
+        ReasoningSummaryTextDeltaEvent,
         OutputItemAddedEvent,
         OutputItemDoneEvent,
         ContentPartAddedEvent,
@@ -1262,7 +1312,7 @@ ResponsesAPIStreamingResponse = Annotated[
 ]
 
 
-REASONING_EFFORT = Literal["low", "medium", "high"]
+REASONING_EFFORT = Literal["minimal", "low", "medium", "high"]
 
 
 class OpenAIRealtimeStreamSession(TypedDict, total=False):

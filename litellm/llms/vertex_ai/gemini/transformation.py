@@ -1,5 +1,5 @@
 """
-Transformation logic from OpenAI format to Gemini format. 
+Transformation logic from OpenAI format to Gemini format.
 
 Why separate file? Make it easy to see how transformation works
 """
@@ -35,6 +35,7 @@ from litellm.types.llms.openai import (
     ChatCompletionFileObject,
     ChatCompletionImageObject,
     ChatCompletionTextObject,
+    ChatCompletionUserMessage,
 )
 from litellm.types.llms.vertex_ai import *
 from litellm.types.llms.vertex_ai import (
@@ -402,16 +403,19 @@ def sync_transform_request_body(
     context_caching_endpoints = ContextCachingEndpoints()
 
     if gemini_api_key is not None:
-        messages, cached_content = context_caching_endpoints.check_and_create_cache(
-            messages=messages,
-            api_key=gemini_api_key,
-            api_base=api_base,
-            model=model,
-            client=client,
-            timeout=timeout,
-            extra_headers=extra_headers,
-            cached_content=optional_params.pop("cached_content", None),
-            logging_obj=logging_obj,
+        messages, optional_params, cached_content = (
+            context_caching_endpoints.check_and_create_cache(
+                messages=messages,
+                optional_params=optional_params,
+                api_key=gemini_api_key,
+                api_base=api_base,
+                model=model,
+                client=client,
+                timeout=timeout,
+                extra_headers=extra_headers,
+                cached_content=optional_params.pop("cached_content", None),
+                logging_obj=logging_obj,
+            )
         )
     else:  # [TODO] implement context caching for gemini as well
         cached_content = optional_params.pop("cached_content", None)
@@ -446,9 +450,11 @@ async def async_transform_request_body(
     if gemini_api_key is not None:
         (
             messages,
+            optional_params,
             cached_content,
         ) = await context_caching_endpoints.async_check_and_create_cache(
             messages=messages,
+            optional_params=optional_params,
             api_key=gemini_api_key,
             api_base=api_base,
             model=model,
@@ -470,6 +476,13 @@ async def async_transform_request_body(
         optional_params=optional_params,
     )
 
+def _default_user_message_when_system_message_passed() -> ChatCompletionUserMessage:
+    """
+    Returns a default user message when a "system" message is passed in gemini fails.
+
+    This adds a blank user message to the messages list, to ensure that gemini doesn't fail the request.
+    """
+    return ChatCompletionUserMessage(content=".", role="user")
 
 def _transform_system_message(
     supports_system_message: bool, messages: List[AllMessageValues]
@@ -505,6 +518,13 @@ def _transform_system_message(
                 messages.pop(idx)
 
     if len(system_content_blocks) > 0:
+        #########################################################
+        # If no messages are passed in, add a blank user message
+        # Relevant Issue - https://github.com/BerriAI/litellm/issues/13769
+        #########################################################
+        if len(messages) == 0:
+            messages.append(_default_user_message_when_system_message_passed())
+        #########################################################
         return SystemInstructions(parts=system_content_blocks), messages
 
     return None, messages
