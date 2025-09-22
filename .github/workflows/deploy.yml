@@ -1,304 +1,179 @@
 name: Notify Repo A on Developer Branch Push
-
 run-name: deploy-${{ github.repository }}-${{ github.ref_name }}-${{ github.run_id }}
 
 on:
   push:
-    branches:
-      - staging
-      - litellm_stable_release_branch
-    tags:
-      - v*
+    branches: [staging, litellm_stable_release_branch]
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_REPO: oraichain/litellm
+  CHART_NAME: thesis-litellm
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
 jobs:
-  build_image_litellm_stable_release_branch:
-    if: github.ref_type == 'branch' && github.ref_name == 'litellm_stable_release_branch'
-    runs-on: [ubuntu-latest]
+  # ====== YAML step anchors (DRY) ======
+  _templates:
+    if: ${{ false }}
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
+      - &checkout
+        name: Checkout Repository
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.ref_name }}
-      
-      - uses: docker/login-action@v3
+
+      - &docker_login
+        name: Login DockerHub
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Set Short Commit
-        id: set_commit
-        run: |
-          echo "SHORT_COMMIT=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_ENV
+      - &set_short_commit
+        name: Set Short Commit
+        run: echo "SHORT_COMMIT=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_ENV
 
-      - name: Build and Push Docker Image
+      - &build_push
+        name: Build and Push Docker Image
         uses: docker/build-push-action@v4
         with:
           context: .
           push: true
-          tags: oraichain/litellm:${{ github.ref_name }}.${{ env.SHORT_COMMIT }}
+          tags: ${{ env.IMAGE_REPO }}:${{ env.TAG_PREFIX }}.${{ env.SHORT_COMMIT }}
 
-
-  build_and_deploy_release:
-    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
-    runs-on: [ubuntu-latest]
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
-        with:
-          ref: ${{ github.ref_name }}
-      
-      - uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Set Short Commit
-        id: set_commit
+      - &install_gh_cli
+        name: Install GH CLI
         run: |
-          echo "SHORT_COMMIT=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_ENV
+          set -euo pipefail
+          type -p gh >/dev/null && exit 0
+          sudo apt-get update
+          sudo apt-get install -y curl
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+            | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+          sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+            | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+          sudo apt-get update && sudo apt-get install -y gh
 
-      - name: Build and Push Docker Image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          tags: oraichain/litellm:${{ github.ref_name }}.${{ env.SHORT_COMMIT }}
+      - &gh_version
+        name: gh version
+        run: gh version
 
-      - name: Install GH CLI
+      - &install_yq
+        name: Install yq
         run: |
-          cat /etc/issue
-          uname -a
-          type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
-          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
-          && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
-          && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-          && sudo apt update \
-          && sudo apt install gh -y
-      - name: gh version
-        run: |
-          gh version
-
-
-      - name: Install yq
-        run: |
-          command_exist=$(command -v "yq") || true
-          current_user=$(whoami)
-          if [ "$current_user" = "root" ]; then
-            bin_path='/usr/local/bin'
-          else
-            mkdir -p ~/bin
-            bin_path="$HOME/bin"
-          fi
-          if [ -z $command_exist ]; then
-            wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O $bin_path/yq
-            chmod +x $bin_path/yq
-            export PATH="$HOME/bin:$PATH"
+          set -euo pipefail
+          if ! command -v yq >/dev/null 2>&1; then
+            BIN=/usr/local/bin/yq
+            sudo wget -q https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O "$BIN"
+            sudo chmod +x "$BIN"
           fi
           yq --version
 
-
-      - name: Update image tag
+      - &update_tag_and_pr
+        name: Update image tag & PR
         env:
-          PAT: ${{ secrets.PAT_TOKEN }}
-          GH_TOKEN: ${{ secrets.GH_TOKEN  }}
-          APPROVAL_GH_TOKEN: ${{ secrets.APPROVAL_GH_TOKEN }}
-          HELM_CHARTS_PATH: helm-charts/litellm/values-prod.yaml
-          CHART_NAME: thesis-litellm
-          KEY: .image.tag
-          ENV: production
-
+          PAT: ${{ secrets.PAT_TOKEN_HELM }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN_HELM }}
+          APPROVAL_GH_TOKEN: ${{ secrets.APPROVAL_GH_TOKEN_HELM }}
         run: |
-          export TAG=${{ github.ref_name }}.${{ env.SHORT_COMMIT }}
-          export PAT=${{ env.APPROVAL_GH_TOKEN }}
-          export APPROVAL=${{ env.APPROVAL_GH_TOKEN }}
-          export PATH="$HOME/bin:$PATH"
+          set -euo pipefail
+          export TAG="${{ env.TAG_PREFIX }}.${{ env.SHORT_COMMIT }}"
+          export PAT="${APPROVAL_GH_TOKEN}"
+          export APPROVAL="${APPROVAL_GH_TOKEN}"
 
-          git fetch --all
           git clone https://${GH_TOKEN}@github.com/oraichain/infra-deployments.git
           cd infra-deployments
 
-          git checkout -b feat/update-$CHART_NAME-$ENV-tag-$TAG
           git config --global user.email "devops@orai.io"
           git config --global user.name "DevOps"
+          BR="feat/update-${{ env.CHART_NAME }}-${{ env.ENV_NAME }}-tag-${TAG}"
+          git checkout -b "$BR"
           git remote set-url origin https://${PAT}@github.com/oraichain/infra-deployments.git
 
-          if [[ ! -f "${HELM_CHARTS_PATH}" ]]; then
-            echo "❌ File ${HELM_CHARTS_PATH} don't exists !"
+          if [[ ! -f "${{ env.HELM_CHARTS_PATH }}" ]]; then
+            echo "❌ File ${{ env.HELM_CHARTS_PATH }} doesn't exist!"
             exit 1
           fi
+
           yq eval -i "${KEY} = strenv(TAG)" "${HELM_CHARTS_PATH}"
-          git commit -am "feat($CHART_NAME): update image tag in $ENV to $TAG"
-          git push -fu origin feat/update-$CHART_NAME-$ENV-tag-$TAG
-          PR_URL=$(gh pr list -H feat/update-$CHART_NAME-$ENV-tag-$TAG -B master --json url --jq '.[].url')
-          if [[ -n "${PR_URL}" ]]; then
-            echo "PR already exists -> ${PR_URL}"
-          else
-            gh pr create --title "Update $CHART_NAME image tag to $TAG in $ENV" --body "$ENV $TAG" -B master
+          git add "${{ env.HELM_CHARTS_PATH }}"
+          git commit -m "feat(${{ env.CHART_NAME }}): update image tag in ${{ env.ENV_NAME }} to ${TAG}"
+          git push -fu origin "$BR"
+
+          PR_URL=$(gh pr list -H "$BR" -B master --json url --jq '.[].url')
+          if [[ -z "${PR_URL}" ]]; then
+            gh pr create --title "Update ${{ env.CHART_NAME }} image tag to ${TAG} in ${{ env.ENV_NAME }}" --body "${{ env.ENV_NAME }} ${TAG}" -B master
+            PR_URL=$(gh pr list -H "$BR" -B master --json url --jq '.[].url')
           fi
+          echo "PR=${PR_URL}" >> $GITHUB_ENV
 
-          GH_TOKEN=$APPROVAL gh pr review -a feat/update-$CHART_NAME-$ENV-tag-$TAG -b "$ENV env will be auto approved"
-          GH_TOKEN=$APPROVAL gh pr merge -d -s --body="$TAG will be synced to $ENV by ArgoCD" feat/update-$CHART_NAME-$ENV-tag-$TAG --admin
+          GH_TOKEN=$APPROVAL gh pr review -a "$BR" -b "${{ env.ENV_NAME }} env will be auto approved"
+          GH_TOKEN=$APPROVAL gh pr merge -d -s --body="${TAG} will be synced to ${{ env.ENV_NAME }} by ArgoCD" "$BR" --admin
 
-
-      - name: Notify discord
+      - &notify_single
+        name: Notify Discord (single)
+        if: always()
         uses: appleboy/discord-action@master
-        env:
-          CHART_NAME: thesis-litellm
         with:
-          webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID_DISTILLEDAI }}
-          webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN_DISTILLEDAI }}
+          webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID_HELM }}
+          webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN_HELM }}
           username: GitBot
           message: |
-            :white_check_mark: Deployed **${{ env.CHART_NAME }}**
+            ${{ job.status == 'success' && ':white_check_mark:' || ':x:' }} **${{ env.CHART_NAME }}** — `${{ env.ENV_NAME }}`
             • Ref: `${{ github.ref_name }}`
             • Commit: `${{ env.SHORT_COMMIT }}`
-            • Status: success
+            • Image: `${{ env.TAG_PREFIX }}.${{ env.SHORT_COMMIT }}`
+            • PR: ${{ env.PR || 'N/A' }}
+            • Run: ${{ env.RUN_URL }}
+            ${{ job.status != 'success' && '\n<@769401829540102154> please check deploy failure!' || '' }}
 
 
-      - name: Notify on deploy error
-        if: failure()
-        uses: appleboy/discord-action@master
-        env:
-          CHART_NAME: thesis-litellm
-        with:
-          webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID_DISTILLEDAI }}
-          webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN_DISTILLEDAI }}
-          username: GitBot
-          message: |
-            :x: Deployed **${{ env.CHART_NAME }}**
-            • Ref: `${{ github.ref_name }}`
-            • Commit: `${{ env.SHORT_COMMIT }}`
-            • Status: failure
 
-
-  build_and_deploy_k8s:
+  # ====== Staging job ======
+  build_and_deploy_k8s_staging:
     if: github.ref_type == 'branch' && github.ref_name == 'staging'
-    runs-on: [ubuntu-latest]
+    runs-on: ubuntu-latest
+    env:
+      TAG_PREFIX: staging
+      ENV_NAME: staging
+      HELM_CHARTS_PATH: helm-charts/litellm/values-staging.yaml
+      KEY: .image.tag
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
-        with:
-          ref: ${{ github.ref_name }}
-      
-      - uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - *checkout
+      - *docker_login
+      - *set_short_commit
+      - *build_push
+      - *install_gh_cli
+      - *gh_version
+      - *install_yq
+      - *update_tag_and_pr
+      - *notify_single
 
-      - name: Set Short Commit
-        id: set_commit
-        run: |
-          echo "SHORT_COMMIT=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_ENV
-
-      - name: Build and Push Docker Image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          tags: oraichain/litellm:${{ github.ref_name }}.${{ env.SHORT_COMMIT }}
-
-      - name: Install GH CLI
-        run: |
-          cat /etc/issue
-          uname -a
-          type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
-          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
-          && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
-          && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-          && sudo apt update \
-          && sudo apt install gh -y
-      - name: gh version
-        run: |
-          gh version
-
-
-      - name: Install yq
-        run: |
-          command_exist=$(command -v "yq") || true
-          current_user=$(whoami)
-          if [ "$current_user" = "root" ]; then
-            bin_path='/usr/local/bin'
-          else
-            mkdir -p ~/bin
-            bin_path="$HOME/bin"
-          fi
-          if [ -z $command_exist ]; then
-            wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O $bin_path/yq
-            chmod +x $bin_path/yq
-            export PATH="$HOME/bin:$PATH"
-          fi
-          yq --version
-
-
-      - name: Update image tag
-        env:
-          PAT: ${{ secrets.PAT_TOKEN }}
-          GH_TOKEN: ${{ secrets.GH_TOKEN  }}
-          APPROVAL_GH_TOKEN: ${{ secrets.APPROVAL_GH_TOKEN }}
-          HELM_CHARTS_PATH: helm-charts/litellm/values-staging.yaml
-          CHART_NAME: thesis-litellm
-          KEY: .image.tag
-          ENV: staging
-
-        run: |
-          export TAG=${{ github.ref_name }}.${{ env.SHORT_COMMIT }}
-          export PAT=${{ env.APPROVAL_GH_TOKEN }}
-          export APPROVAL=${{ env.APPROVAL_GH_TOKEN }}
-          export PATH="$HOME/bin:$PATH"
-
-          git fetch --all
-          git clone https://${GH_TOKEN}@github.com/oraichain/infra-deployments.git
-          cd infra-deployments
-
-          git checkout -b feat/update-$CHART_NAME-$ENV-tag-$TAG
-          git config --global user.email "devops@orai.io"
-          git config --global user.name "DevOps"
-          git remote set-url origin https://${PAT}@github.com/oraichain/infra-deployments.git
-
-          if [[ ! -f "${HELM_CHARTS_PATH}" ]]; then
-            echo "❌ File ${HELM_CHARTS_PATH} don't exists !"
-            exit 1
-          fi
-          yq eval -i "${KEY} = strenv(TAG)" "${HELM_CHARTS_PATH}"
-          git commit -am "feat($CHART_NAME): update image tag in $ENV to $TAG"
-          git push -fu origin feat/update-$CHART_NAME-$ENV-tag-$TAG
-          PR_URL=$(gh pr list -H feat/update-$CHART_NAME-$ENV-tag-$TAG -B master --json url --jq '.[].url')
-          if [[ -n "${PR_URL}" ]]; then
-            echo "PR already exists -> ${PR_URL}"
-          else
-            gh pr create --title "Update $CHART_NAME image tag to $TAG in $ENV" --body "$ENV $TAG" -B master
-          fi
-
-          GH_TOKEN=$APPROVAL gh pr review -a feat/update-$CHART_NAME-$ENV-tag-$TAG -b "$ENV env will be auto approved"
-          GH_TOKEN=$APPROVAL gh pr merge -d -s --body="$TAG will be synced to $ENV by ArgoCD" feat/update-$CHART_NAME-$ENV-tag-$TAG --admin
-
-
-      - name: Notify discord
-        uses: appleboy/discord-action@master
-        env:
-          CHART_NAME: thesis-litellm
-        with:
-          webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID_DISTILLEDAI }}
-          webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN_DISTILLEDAI }}
-          username: GitBot
-          message: |
-            :white_check_mark: Deployed **${{ env.CHART_NAME }}**
-            • Ref: `${{ github.ref_name }}`
-            • Commit: `${{ env.SHORT_COMMIT }}`
-            • Status: success
-
-
-      - name: Notify on deploy error
-        if: failure()
-        uses: appleboy/discord-action@master
-        env:
-          CHART_NAME: thesis-litellm
-        with:
-          webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID_DISTILLEDAI }}
-          webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN_DISTILLEDAI }}
-          username: GitBot
-          message: |
-            :x: Deployed **${{ env.CHART_NAME }}**
-            • Ref: `${{ github.ref_name }}`
-            • Commit: `${{ env.SHORT_COMMIT }}`
-            • Status: failure
+  # ====== Production job ======
+  build_and_deploy_k8s_prod:
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+    runs-on: ubuntu-latest
+    env:
+      TAG_PREFIX: ${{ github.ref_name }}
+      ENV_NAME: production
+      HELM_CHARTS_PATH: helm-charts/litellm/values-prod.yaml
+      KEY: .image.tag
+    steps:
+      - *checkout
+      - *docker_login
+      - *set_short_commit
+      - *build_push
+      - *install_gh_cli
+      - *gh_version
+      - *install_yq
+      - *update_tag_and_pr
+      - *notify_single
