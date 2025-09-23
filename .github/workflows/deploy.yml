@@ -141,7 +141,8 @@ jobs:
   # ====== Staging job ======
   build_and_deploy_k8s_staging:
     if: github.ref_type == 'branch' && github.ref_name == 'staging'
-    runs-on: ubuntu-latest
+    # runs-on: ubuntu-latest
+    runs-on: [self-hosted, "65109118941"]
     env:
       TAG_PREFIX: staging
       ENV_NAME: staging
@@ -161,7 +162,8 @@ jobs:
   # ====== Production job ======
   build_and_deploy_k8s_prod:
     if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
-    runs-on: ubuntu-latest
+    # runs-on: ubuntu-latest
+    runs-on: [self-hosted, "65109118941"]
     env:
       TAG_PREFIX: ${{ github.ref_name }}
       ENV_NAME: production
