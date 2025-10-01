@@ -49,6 +49,7 @@ const sidebars = {
           "proxy/guardrails/secret_detection",
           "proxy/guardrails/custom_guardrail",
           "proxy/guardrails/prompt_injection",
+          "proxy/guardrails/tool_permission",
         ].sort(),
       ],
     },
@@ -141,6 +142,7 @@ const sidebars = {
             "proxy/clientside_auth",
             "proxy/request_headers",
             "proxy/response_headers",
+            "proxy/forward_client_headers",
             "proxy/model_discovery",
           ],
         },
@@ -261,6 +263,7 @@ const sidebars = {
             "completion/input",
             "completion/output",
             "completion/usage",
+            "completion/http_handler_config",
           ],
         },
         "response_api",
@@ -389,6 +392,7 @@ const sidebars = {
             "providers/vertex",
             "providers/vertex_partner",
             "providers/vertex_image",
+            "providers/vertex_batch",
           ]
         },
         {
@@ -408,7 +412,9 @@ const sidebars = {
           label: "Bedrock",
           items: [
             "providers/bedrock",
+            "providers/bedrock_embedding",
             "providers/bedrock_agents",
+            "providers/bedrock_batches",
             "providers/bedrock_vector_store",
           ]
         },
@@ -449,6 +455,7 @@ const sidebars = {
         "providers/elevenlabs",
         "providers/fireworks_ai",
         "providers/clarifai",
+        "providers/compactifai",
         "providers/vllm",
         "providers/llamafile",
         "providers/infinity",
@@ -482,8 +489,10 @@ const sidebars = {
         "providers/nebius",
         "providers/dashscope",
         "providers/bytez",
+        "providers/heroku",
         "providers/oci",
-        "providers/datarobot",  
+        "providers/datarobot",
+        "providers/ovhcloud",  
       ],
     },
     {
@@ -515,6 +524,7 @@ const sidebars = {
         "completion/batching",
         "completion/mock_requests",
         "completion/reliable_completions",
+        "proxy/veo_video_generation",
 
       ]
     },
