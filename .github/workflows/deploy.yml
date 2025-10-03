@@ -179,3 +179,24 @@ jobs:
       - *install_yq
       - *update_tag_and_pr
       - *notify_single
+
+# ====== litellm_stable_release_branch job ======
+  build_and_deploy_k8s_litellm_stable_release_branch:
+    if: github.ref_type == 'branch' && github.ref_name == 'litellm_stable_release_branch'
+    runs-on: ubuntu-latest
+    # runs-on: [self-hosted, "65109118941"]
+    env:
+      TAG_PREFIX: staging
+      ENV_NAME: staging
+      HELM_CHARTS_PATH: helm-charts/litellm/values-litellm_stable_release_branch.yaml
+      KEY: .image.tag
+    steps:
+      - *checkout
+      - *docker_login
+      - *set_short_commit
+      - *build_push
+      # - *install_gh_cli
+      # - *gh_version
+      # - *install_yq
+      # - *update_tag_and_pr
+      - *notify_single
