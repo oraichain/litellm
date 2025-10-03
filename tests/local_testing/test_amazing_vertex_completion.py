@@ -839,8 +839,8 @@ from test_completion import response_format_tests
     "model,region",
     [
         ("vertex_ai/mistral-large-2411", "us-central1"),
-        ("vertex_ai/mistral-nemo@2407", "us-central1"),
-        ("vertex_ai/qwen/qwen3-coder-480b-a35b-instruct-maas", "us-south1")
+        ("vertex_ai/qwen/qwen3-coder-480b-a35b-instruct-maas", "us-south1"),
+        ("vertex_ai/openai/gpt-oss-20b-maas", "us-central1"),
     ],
 )
 @pytest.mark.parametrize(
@@ -911,6 +911,7 @@ async def test_partner_models_httpx(model, region, sync_mode):
         ("vertex_ai/meta/llama-4-scout-17b-16e-instruct-maas", "us-east5"),
         ("vertex_ai/qwen/qwen3-coder-480b-a35b-instruct-maas", "us-south1"),
         ("vertex_ai/mistral-large-2411", "us-central1"), # critical - we had this issue: https://github.com/BerriAI/litellm/issues/13888
+        ("vertex_ai/openai/gpt-oss-20b-maas", "us-central1"),
     ],
 )
 @pytest.mark.parametrize(
@@ -3025,10 +3026,13 @@ def test_custom_api_base(api_base):
         stream=stream,
         auth_header=None,
         url="my-fake-endpoint",
+        model="gemini-1.5-pro",  # Required for Gemini custom API base URLs
     )
 
     if api_base:
-        assert url == api_base + ":"
+        # For Gemini with custom API base, URL should be constructed as api_base/models/model:endpoint
+        expected_url = f"{api_base}/models/gemini-1.5-pro:"
+        assert url == expected_url
     else:
         assert url == test_endpoint
 
