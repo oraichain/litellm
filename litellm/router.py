@@ -981,7 +981,7 @@ class Router:
             # fix for gpt-4.1 model after deployment
             try:
                 actual_model_info = litellm.get_model_info(model=deployment["model_name"])
-                if 'max_tokens' in actual_model_info:
+                if 'max_tokens' in actual_model_info and 'gpt-4.1' in deployment["model_name"]:
                     kwargs["max_tokens"] = actual_model_info['max_tokens']
                     verbose_router_logger.info(f"\n new max tokens {kwargs['max_tokens']}")
             except Exception as e:
@@ -1297,7 +1297,7 @@ class Router:
             # fix for gpt-4.1 model after deployment
             try:
                 actual_model_info = litellm.get_model_info(model=deployment["model_name"])
-                if 'max_tokens' in actual_model_info:
+                if 'max_tokens' in actual_model_info and 'gpt-4.1' in deployment["model_name"]:
                     input_kwargs["max_tokens"] = actual_model_info['max_tokens']
                     verbose_router_logger.info(f"\n new max tokens {input_kwargs['max_tokens']}")
             except Exception as e:
