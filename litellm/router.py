@@ -977,6 +977,16 @@ class Router:
             ## only run if model group given, not model id
             if model not in self.get_model_ids():
                 self.routing_strategy_pre_call_checks(deployment=deployment)
+                
+            # fix for gpt-4.1 model after deployment
+            try:
+                actual_model_info = litellm.get_model_info(model=deployment["model_name"])
+                if 'max_tokens' in actual_model_info:
+                    kwargs["max_tokens"] = actual_model_info['max_tokens']
+                    verbose_router_logger.info(f"\n new max tokens {kwargs['max_tokens']}")
+            except Exception as e:
+                verbose_router_logger.warning(f"\n error getting model info {e}")
+                
 
             response = litellm.completion(
                 **{
@@ -1284,6 +1294,15 @@ class Router:
                 "client": model_client,
                 **kwargs,
             }
+            # fix for gpt-4.1 model after deployment
+            try:
+                actual_model_info = litellm.get_model_info(model=deployment["model_name"])
+                if 'max_tokens' in actual_model_info:
+                    input_kwargs["max_tokens"] = actual_model_info['max_tokens']
+                    verbose_router_logger.info(f"\n new max tokens {input_kwargs['max_tokens']}")
+            except Exception as e:
+                verbose_router_logger.warning(f"\n error getting model info {e}")
+                
 
             _response = litellm.acompletion(**input_kwargs)
 
