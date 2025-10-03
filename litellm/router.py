@@ -980,6 +980,12 @@ class Router:
             ## only run if model group given, not model id
             if model not in self.get_model_ids():
                 self.routing_strategy_pre_call_checks(deployment=deployment)
+                
+            actual_model_info = litellm.get_model_info(model=deployment["model_name"])
+            if actual_model_info['max_tokens'] is not None:
+                kwargs["max_tokens"] = actual_model_info['max_tokens']
+                
+            verbose_router_logger.info(f"\n new max tokens {kwargs['max_tokens']}")
 
             response = litellm.completion(
                 **{
@@ -1287,6 +1293,12 @@ class Router:
                 "client": model_client,
                 **kwargs,
             }
+            # fix for gpt-4.1 model after deployment
+            actual_model_info = litellm.get_model_info(model=deployment["model_name"])
+            if actual_model_info['max_tokens'] is not None:
+                input_kwargs["max_tokens"] = actual_model_info['max_tokens']
+                
+            verbose_router_logger.info(f"\n new max tokens {input_kwargs['max_tokens']}")
 
             _response = litellm.acompletion(**input_kwargs)
 
