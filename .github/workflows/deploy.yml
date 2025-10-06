@@ -146,7 +146,7 @@ jobs:
     env:
       TAG_PREFIX: staging
       ENV_NAME: staging
-      HELM_CHARTS_PATH: helm-charts/litellm/values-staging.yaml
+      HELM_CHARTS_PATH: helm-charts/litellm/values-staging-aws.yaml
       KEY: .image.tag
     steps:
       - *checkout
